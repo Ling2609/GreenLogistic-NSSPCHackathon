@@ -1,15 +1,16 @@
 import pandas as pd
 import numpy as np
 import math
+import random
 
 FILE_NAME = 'Dataset_Preliminary_Presentation_v10 (1).xlsx'
 
 print("========================================")
-print(" STEP 5: THE MASTER SCENARIO PIPELINE")
+print(" STEP 5: FINAL SYMMETRICAL PIPELINE")
 print("========================================")
 
 # ---------------------------------------------------------
-# 1. LOAD ALL DYNAMIC DATA FROM EXCEL
+# 1. LOAD DYNAMIC DATA 
 # ---------------------------------------------------------
 print("1. Loading dynamic data...")
 df_farms         = pd.read_excel(FILE_NAME, sheet_name='Farms')
@@ -19,7 +20,6 @@ df_demand        = pd.read_excel(FILE_NAME, sheet_name='Demand')
 df_customers     = pd.read_excel(FILE_NAME, sheet_name='Customers')
 df_vehicles      = pd.read_excel(FILE_NAME, sheet_name='Vehicles')
 df_scenarios     = pd.read_excel(FILE_NAME, sheet_name='Scenarios')
-df_yields        = pd.read_excel(FILE_NAME, sheet_name='Scenario_Yield')
 
 def clean_ids(df, id_columns):
     for col in id_columns:
@@ -33,7 +33,6 @@ df_farm_products = clean_ids(df_farm_products, ['farm_id', 'sku_id'])
 df_demand        = clean_ids(df_demand, ['customer_id', 'sku_id'])
 df_customers     = clean_ids(df_customers, ['customer_id'])
 
-# Setup Master Menus
 df_supply = pd.merge(df_farm_products, df_farms, on='farm_id', how='left')
 df_supply = pd.merge(df_supply, df_products, on='sku_id', how='left')
 df_supply.rename(columns={'lat': 'farm_lat', 'lon': 'farm_lon'}, inplace=True)
@@ -60,11 +59,10 @@ vehicles_dict = df_vehicles.set_index('vehicle_type_id').to_dict('index')
 FUEL_PRICE_RM = 2.05
 
 summary_kpis = []
-# This dictionary will store our Side-by-Side Wide Table format!
 master_routes_dict = {}
 
 # ---------------------------------------------------------
-# 2. RUN THE PIPELINE FOR EACH SCENARIO
+# 2. RUN THE PIPELINE 
 # ---------------------------------------------------------
 print("\n2. Executing Scenarios...")
 
@@ -75,19 +73,23 @@ for _, scenario in df_scenarios.iterrows():
     d_mult = scenario['demand_multiplier']
     t_mult = scenario['travel_time_multiplier']
     
+    # --- TRUE RANDOMNESS FOR S2 ---
+    random_shock_location = None
+    if s_id == 'S2':
+        random_shock_location = random.choice(['LOC_CH', 'LOC_BB', 'LOC_AH'])
+        print(f"      [!] DISASTER STRUCK: {random_shock_location} lost 20% of its crops!")
+    
     # --- PHASE A: ALLOCATION ---
     df_matches = df_matches_base.copy()
-    
     customer_demand = df_matches.groupby(['customer_id', 'sku_id'])['weekly_demand_mean_boxes'].max() * d_mult
     customer_demand = customer_demand.to_dict()
     
     farm_inventory = {}
     for (farm, sku, loc), group in df_matches.groupby(['farm_id', 'sku_id', 'location_id']):
         cap = group['daily_capacity_boxes'].max()
-        y_mult = df_yields[(df_yields['scenario_id'] == s_id) & (df_yields['location_id'] == loc)]['yield_multiplier'].max()
-        if pd.isna(y_mult): y_mult = 1.0
-            
-        farm_inventory[(farm, sku)] = cap * y_mult
+        if s_id == 'S2' and loc == random_shock_location:
+            cap = cap * 0.8
+        farm_inventory[(farm, sku)] = cap 
 
     final_allocations = []
     for index, row in df_matches.iterrows():
@@ -138,7 +140,6 @@ for _, scenario in df_scenarios.iterrows():
                 trucks.append('VAN_AMB')
                 ambient_boxes -= vehicles_dict['VAN_AMB']['capacity_boxes']
                 
-        # Calculate specific costs for this route grouping
         total_route_cost = 0
         max_time = 0
         for t in trucks:
@@ -153,10 +154,6 @@ for _, scenario in df_scenarios.iterrows():
         total_scenario_cost += total_route_cost
         total_scenario_ontime += on_time * len(trucks)
 
-        # ---------------------------------------------------------
-        # THE "WIDE-FORMAT" BUILDER (Exactly what you asked for!)
-        # ---------------------------------------------------------
-        # Group trucks like "1x REEFER_TRK + 2x VAN_AMB"
         from collections import Counter
         truck_counts = Counter(trucks)
         truck_str = " + ".join([f"{v}x {k}" for k, v in truck_counts.items()])
@@ -166,26 +163,27 @@ for _, scenario in df_scenarios.iterrows():
             master_routes_dict[key] = {
                 'Farm': farm,
                 'Customer': customer,
-                'Trucks': truck_str,
-                'Time_H': round(max_time, 2),
-                'On_Time': on_time
             }
             
-        # Dynamically append Dist and Cost for whatever Scenario we are in!
-        master_routes_dict[key][f'Dist_{s_id}'] = round(dist, 2)
-        master_routes_dict[key][f'Cost_{s_id}'] = round(total_route_cost, 2)
-        
-        # If it's the normal baseline (S0), lock in those truck requirements
+        # PERFECTLY SYMMETRICAL COLUMNS!
         if s_id == 'S0':
-            master_routes_dict[key]['Trucks'] = truck_str
-            master_routes_dict[key]['Time_H'] = round(max_time, 2)
-            master_routes_dict[key]['On_Time'] = on_time
+            master_routes_dict[key]['Trucks_S0'] = truck_str
+            master_routes_dict[key]['Dist_S0'] = round(dist, 2)
+            master_routes_dict[key]['Cost_S0'] = round(total_route_cost, 2)
+        elif s_id == 'S1':
+            master_routes_dict[key]['Trucks_S1'] = truck_str
+            master_routes_dict[key]['Dist_S1'] = round(dist, 2)
+            master_routes_dict[key]['Cost_S1'] = round(total_route_cost, 2)
+        elif s_id == 'S2':
+            master_routes_dict[key]['Trucks_S2'] = truck_str
+            master_routes_dict[key]['Dist_S2'] = round(dist, 2)
+            master_routes_dict[key]['Cost_S2'] = round(total_route_cost, 2)
 
-    # Calculate overall Dashboard summary
     on_time_pct = (total_scenario_ontime / total_scenario_trucks) * 100 if total_scenario_trucks > 0 else 0
     summary_kpis.append({
         'Scenario': s_id,
         'Name': scenario['scenario_name'],
+        'Randomized Location Hit': random_shock_location if s_id == 'S2' else 'None',
         'Total Trucks': total_scenario_trucks,
         'Total Cost (RM)': round(total_scenario_cost, 2),
         'On-Time %': round(on_time_pct, 1),
@@ -193,19 +191,40 @@ for _, scenario in df_scenarios.iterrows():
     })
 
 # ---------------------------------------------------------
-# 3. EXPORT FINAL REPORT 
+# 3. EXPORT FINAL REPORT & COLUMN DEFINITIONS
 # ---------------------------------------------------------
 df_summary = pd.DataFrame(summary_kpis)
 df_summary.set_index('Scenario', inplace=True)
 df_pivot = df_summary.T 
 
-# Convert our Wide Dictionary into the final DataFrame!
 df_wide_routes = pd.DataFrame(list(master_routes_dict.values()))
-# If a route wasn't used in a disaster scenario, put 0 instead of leaving it blank
 df_wide_routes.fillna(0, inplace=True) 
 
-# Sort it alphabetically by Farm and Customer so it is easy to read
+# Force the specific symmetrical column order!
+cols = ['Farm', 'Customer', 
+        'Trucks_S0', 'Dist_S0', 'Cost_S0', 
+        'Trucks_S1', 'Dist_S1', 'Cost_S1', 
+        'Trucks_S2', 'Dist_S2', 'Cost_S2']
+cols = [c for c in cols if c in df_wide_routes.columns]
+df_wide_routes = df_wide_routes[cols]
+
 df_wide_routes.sort_values(by=['Farm', 'Customer'], inplace=True)
+
+# Generate the Definitions Table!
+definitions = [
+    {'Column Name': 'Farm', 'Definition': 'The Farm ID supplying the vegetables.'},
+    {'Column Name': 'Customer', 'Definition': 'The Customer ID receiving the vegetables.'},
+    {'Column Name': 'Trucks_S0', 'Definition': 'The types and quantities of trucks used in a Normal Week.'},
+    {'Column Name': 'Dist_S0', 'Definition': 'The total one-way road distance (km) driven in a Normal Week.'},
+    {'Column Name': 'Cost_S0', 'Definition': 'The total route cost (RM) including fixed fees, fuel, and maintenance in a Normal Week.'},
+    {'Column Name': 'Trucks_S1', 'Definition': 'The trucks used during Peak Demand (+30% volume).'},
+    {'Column Name': 'Dist_S1', 'Definition': 'The road distance (km) driven during Peak Demand.'},
+    {'Column Name': 'Cost_S1', 'Definition': 'The total route cost (RM) during Peak Demand.'},
+    {'Column Name': 'Trucks_S2', 'Definition': 'The trucks used during the randomized Supply Shock (-20% yield).'},
+    {'Column Name': 'Dist_S2', 'Definition': 'The road distance (km) driven during the Supply Shock (may increase if a backup farm is used!).'},
+    {'Column Name': 'Cost_S2', 'Definition': 'The total route cost (RM) during the Supply Shock.'}
+]
+df_definitions = pd.DataFrame(definitions)
 
 print("\n========================================")
 print("    FINAL SIDE-BY-SIDE DASHBOARD")
@@ -216,5 +235,6 @@ print("========================================")
 with pd.ExcelWriter("Step5_Master_Scenario_Results.xlsx") as writer:
     df_pivot.to_excel(writer, sheet_name='Comparison_Dashboard')
     df_wide_routes.to_excel(writer, sheet_name='Wide_Route_Comparison', index=False)
+    df_definitions.to_excel(writer, sheet_name='Data_Dictionary', index=False) # Export the definitions!
 
 print("\nSuccess! Pipeline finished and exported to 'Step5_Master_Scenario_Results.xlsx'")
