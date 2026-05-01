@@ -5,12 +5,12 @@ import random
 from collections import Counter
 
 # ============================================================
-# STEP 5 (PATCHED, WIDE, & COLOR-CODED) — PROPOSAL A PIPELINE
+# STEP 5 (PATCHED, WIDE, COLOR-CODED, & ORDERED)
 # ============================================================
 
 FILE_NAME = 'Dataset_Preliminary_Presentation_v10 (1).xlsx'
 FUEL_PRICE_RM = 2.05   
-YIELD_SHOCK   = 0.8    
+YIELD_SHOCK   = 0.1    
 
 print("========================================")
 print(" STEP 5: PROPOSAL A PIPELINE (COLOR DASHBOARD)")
@@ -129,7 +129,7 @@ print("\n3. Running scenarios...")
 
 summary_rows       = []
 master_routes_dict = {}  
-master_spoilage_dict = {} # NEW: Tracks wide dashboard columns for Spoilage
+master_spoilage_dict = {}
 
 for sc in SCENARIOS:
     print(f"   -> {sc['id']}: {sc['name']}")
@@ -138,8 +138,8 @@ for sc in SCENARIOS:
     t_mult    = sc['time_mult']
     shock_loc = sc['shock_loc']
 
-    # ── PHASE A: CAPACITY-AWARE ALLOCATION ─────────────────
-    customer_demand = (df_all_matches.groupby(['customer_id', 'sku_id'])['weekly_demand_mean_boxes'].first() * d_mult).to_dict()
+    temp_demand = df_all_matches.groupby(['customer_id', 'sku_id'])['weekly_demand_mean_boxes'].first() * d_mult
+    customer_demand = {k: int(math.ceil(v)) for k, v in temp_demand.items()}
 
     farm_inventory = {}
     for (farm, sku, loc), grp in df_all_matches.groupby(['farm_id', 'sku_id', 'location_id']):
@@ -169,7 +169,6 @@ for sc in SCENARIOS:
 
     df_plan = pd.DataFrame(allocations)
 
-    # ── PHASE B: ROUTING, COSTS, SPOILAGE ──────────────────
     sc_fuel_L    = 0
     sc_fuel_cost = 0
     sc_total_cost= 0
@@ -208,7 +207,6 @@ for sc in SCENARIOS:
             route_total_cost += kpis['total_cost']
             if kpis['on_time'] == 0: route_on_time = 0 
 
-        # ── Dashboard Wide Logic (ROUTES) ─────────────────
         key = (farm, customer)
         if key not in master_routes_dict:
             master_routes_dict[key] = {
@@ -226,14 +224,12 @@ for sc in SCENARIOS:
         master_routes_dict[key][f'fuel_cost_RM_{sc_id}']  = round(route_fuel_cost, 2)
         master_routes_dict[key][f'total_cost_RM_{sc_id}'] = round(route_total_cost, 2)
 
-        # ── Dashboard Wide Logic (SPOILAGE) ───────────────────────────
         for _, row in group.iterrows():
             speed = (vehicles_dict['REEFER_TRK']['avg_speed_kmph'] if row['strict_cold_chain'] == 1 else vehicles_dict['LORRY_AMB']['avg_speed_kmph'])
             shelf_life = (row['shelf_life_cold_h'] if row['strict_cold_chain'] == 1 else row['shelf_life_ambient_h'])
             spoiled = calc_spoilage(row['allocated_boxes'], distance_km, speed, t_mult, shelf_life, row['spoilage_rate_per_h_after_limit'])
             sc_spoiled += spoiled
 
-            # Wide format for Spoilage!
             s_key = (farm, customer, row['sku_id'])
             if s_key not in master_spoilage_dict:
                 master_spoilage_dict[s_key] = {
@@ -258,7 +254,7 @@ for sc in SCENARIOS:
     })
 
 # ---------------------------------------------------------
-# 5. PRINT & EXPORT WITH EXCEL COLOR STYLING
+# 5. COLUMN ENFORCER & EXPORT
 # ---------------------------------------------------------
 df_summary = pd.DataFrame(summary_rows)
 df_summary.set_index('Scenario', inplace=True)
@@ -267,13 +263,38 @@ df_pivot = df_summary.T
 df_wide_routes = pd.DataFrame(list(master_routes_dict.values())).fillna(0)
 df_wide_spoilage = pd.DataFrame(list(master_spoilage_dict.values())).fillna(0)
 
+# FORCE COLUMN ORDERING: Base -> S0 -> S1 -> S2a -> S2b -> S2c
+scenarios_ordered = ['S0', 'S1', 'S2a', 'S2b', 'S2c']
+
+# Sort Route Sheet
+route_bases = ['farm_id', 'customer_id', 'distance_km', 'max_lead_time_h']
+route_metrics = ['vehicle_type', 'travel_time_h', 'on_time', 'fuel_used_L', 'fuel_cost_RM', 'total_cost_RM']
+ordered_route_cols = route_bases.copy()
+for sc in scenarios_ordered:
+    for m in route_metrics:
+        col_name = f"{m}_{sc}"
+        if col_name in df_wide_routes.columns:
+            ordered_route_cols.append(col_name)
+df_wide_routes = df_wide_routes[ordered_route_cols]
+
+# Sort Spoilage Sheet
+spoil_bases = ['farm_id', 'customer_id', 'sku_id', 'sku_name', 'distance_km', 'shelf_life_h']
+spoil_metrics = ['travel_h', 'allocated_boxes', 'spoiled_boxes']
+ordered_spoil_cols = spoil_bases.copy()
+for sc in scenarios_ordered:
+    for m in spoil_metrics:
+        col_name = f"{m}_{sc}"
+        if col_name in df_wide_spoilage.columns:
+            ordered_spoil_cols.append(col_name)
+df_wide_spoilage = df_wide_spoilage[ordered_spoil_cols]
+
 # Generate Data Dictionary
 definitions = [
     {'Data Field': 'farm_id', 'Definition': 'The Farm ID supplying the vegetables.'},
     {'Data Field': 'customer_id', 'Definition': 'The Customer ID receiving the vegetables.'},
     {'Data Field': 'distance_km', 'Definition': 'The one-way road distance estimated with circuity multiplier.'},
     {'Data Field': 'max_lead_time_h', 'Definition': 'The strict delivery deadline set by the customer.'},
-    {'Data Field': 'vehicle_type_[S0/S1/S2]', 'Definition': 'The aggregated list of vehicles deployed for this route during that specific scenario.'},
+    {'Data Field': 'vehicle_type_[S0/S1/S2]', 'Definition': 'The aggregated list of vehicles deployed for this route.'},
     {'Data Field': 'travel_time_h_[S0/S1/S2]', 'Definition': 'The maximum travel time taken by the trucks on this route.'},
     {'Data Field': 'on_time_[S0/S1/S2]', 'Definition': '1 if all trucks on the route arrived within the lead time, 0 if late.'},
     {'Data Field': 'fuel_used_L_[S0/S1/S2]', 'Definition': 'The sum of fuel consumed by all trucks on this route.'},
@@ -282,13 +303,6 @@ definitions = [
 ]
 df_dict = pd.DataFrame(definitions)
 
-print("\n" + "=" * 75)
-print("         PROPOSAL A — KPI DASHBOARD (SIDE-BY-SIDE)")
-print("=" * 75)
-print(df_pivot.to_string())
-print("=" * 75)
-
-# Initialize the XlsxWriter engine to enable Pastel Coloring
 OUTPUT_FILE = 'Step5_Master_Scenario_Results_Patched.xlsx'
 writer = pd.ExcelWriter(OUTPUT_FILE, engine='xlsxwriter')
 
@@ -297,38 +311,46 @@ df_wide_routes.to_excel(writer, sheet_name='Wide_Route_Comparison', index=False)
 df_wide_spoilage.to_excel(writer,sheet_name='Wide_Spoilage_Detail',  index=False)
 df_dict.to_excel(writer,        sheet_name='Data_Dictionary', index=False)
 
-# Get the workbook object to add formats
 workbook = writer.book
 
-# Define Pastel Color Formats
-fmt_base = workbook.add_format({'bg_color': '#F2F2F2', 'border': 1}) # Light Grey (Base Info)
-fmt_s0   = workbook.add_format({'bg_color': '#E2EFDA', 'border': 1}) # Pastel Green (Normal)
-fmt_s1   = workbook.add_format({'bg_color': '#DDEBF7', 'border': 1}) # Pastel Blue (Spike)
-fmt_s2a  = workbook.add_format({'bg_color': '#FFF2CC', 'border': 1}) # Pastel Yellow (Shock CH)
-fmt_s2b  = workbook.add_format({'bg_color': '#FCE4D6', 'border': 1}) # Pastel Orange (Shock BB)
-fmt_s2c  = workbook.add_format({'bg_color': '#F4CCCC', 'border': 1}) # Pastel Red (Shock AH)
+# Format for Headers (Bold & Darker)
+hdr_base = workbook.add_format({'bg_color': '#D9D9D9', 'bold': True, 'border': 1})
+hdr_s0   = workbook.add_format({'bg_color': '#A9D08E', 'bold': True, 'border': 1})
+hdr_s1   = workbook.add_format({'bg_color': '#9BC2E6', 'bold': True, 'border': 1})
+hdr_s2a  = workbook.add_format({'bg_color': '#FFD966', 'bold': True, 'border': 1})
+hdr_s2b  = workbook.add_format({'bg_color': '#F4B084', 'bold': True, 'border': 1})
+hdr_s2c  = workbook.add_format({'bg_color': '#E699CC', 'bold': True, 'border': 1})
+
+# Format for Cells (Lighter Pastels)
+fmt_base = workbook.add_format({'bg_color': '#F2F2F2', 'border': 1})
+fmt_s0   = workbook.add_format({'bg_color': '#E2EFDA', 'border': 1})
+fmt_s1   = workbook.add_format({'bg_color': '#DDEBF7', 'border': 1})
+fmt_s2a  = workbook.add_format({'bg_color': '#FFF2CC', 'border': 1})
+fmt_s2b  = workbook.add_format({'bg_color': '#FCE4D6', 'border': 1})
+fmt_s2c  = workbook.add_format({'bg_color': '#F4CCCC', 'border': 1})
 
 def apply_pastel_colors(sheet_name, df):
     worksheet = writer.sheets[sheet_name]
     for col_num, col_name in enumerate(df.columns):
-        # Set default width
-        worksheet.set_column(col_num, col_num, 16)
-        
-        # Apply the color based on the column name!
         if '_S0' in col_name:
-            worksheet.set_column(col_num, col_num, 16, fmt_s0)
+            worksheet.write(0, col_num, col_name, hdr_s0) 
+            worksheet.set_column(col_num, col_num, 16, fmt_s0) 
         elif '_S1' in col_name:
+            worksheet.write(0, col_num, col_name, hdr_s1)
             worksheet.set_column(col_num, col_num, 16, fmt_s1)
         elif '_S2a' in col_name:
+            worksheet.write(0, col_num, col_name, hdr_s2a)
             worksheet.set_column(col_num, col_num, 16, fmt_s2a)
         elif '_S2b' in col_name:
+            worksheet.write(0, col_num, col_name, hdr_s2b)
             worksheet.set_column(col_num, col_num, 16, fmt_s2b)
         elif '_S2c' in col_name:
+            worksheet.write(0, col_num, col_name, hdr_s2c)
             worksheet.set_column(col_num, col_num, 16, fmt_s2c)
         else:
-            worksheet.set_column(col_num, col_num, 14, fmt_base)
+            worksheet.write(0, col_num, col_name, hdr_base)
+            worksheet.set_column(col_num, col_num, 15, fmt_base)
 
-# Apply the coloring logic to the two wide sheets
 apply_pastel_colors('Wide_Route_Comparison', df_wide_routes)
 apply_pastel_colors('Wide_Spoilage_Detail', df_wide_spoilage)
 
