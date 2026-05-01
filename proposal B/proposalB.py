@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 import math
 import random
-import os
 from collections import Counter
+import os
 
 # ============================================================
 # STEP 6: PROPOSAL B (REGIONAL "MILK RUN" CONSOLIDATION)
@@ -13,12 +13,15 @@ from collections import Counter
 #   2. Groups by Farm + Region + Cold Chain Rules
 #   3. Strict adherence to dataset constraints (0.8 Yield Shock)
 #   4. Side-by-Side Pastel KPI Dashboard
+#   5. Data Dictionary Included
 # ============================================================
 
+# Auto-locate the dataset in the same folder as this script
 script_dir = os.path.dirname(os.path.abspath(__file__))
 FILE_NAME = os.path.join(script_dir, 'Dataset_Preliminary_Presentation_v10 (1).xlsx')
+
 FUEL_PRICE_RM = 2.05   
-YIELD_SHOCK   = 0.8    # STRICTLY RULE-COMPLIANT
+YIELD_SHOCK   = 0.8    
 
 print("========================================")
 print(" STEP 6: PROPOSAL B (TRUE AI CONSOLIDATION)")
@@ -47,7 +50,7 @@ df_farm_products = clean_ids(df_farm_products,  ['farm_id', 'sku_id'])
 df_demand        = clean_ids(df_demand,         ['customer_id', 'sku_id'])
 df_customers     = clean_ids(df_customers,      ['customer_id'])
 
-# Safely determine the region column for grouping (usually 'state' or 'city')
+# Safely determine the region column for grouping
 region_col = 'state' if 'state' in df_customers.columns else 'city' if 'city' in df_customers.columns else 'customer_id'
 
 df_supply = pd.merge(df_farm_products, df_farms, on='farm_id', how='left')
@@ -63,7 +66,6 @@ vehicles_dict = df_vehicles.set_index('vehicle_type_id').to_dict('index')
 # 2. MATCHING & DISTANCE MATH
 # ---------------------------------------------------------
 def haversine_road(lat1, lon1, lat2, lon2):
-    """Calculates road distance using standard 1.3 circuity penalty."""
     R = 6371.0
     lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
     a = np.sin((lat2-lat1)/2)**2 + np.cos(lat1)*np.cos(lat2)*np.sin((lon2-lon1)/2)**2
@@ -75,18 +77,12 @@ df_all_matches['distance_km'] = haversine_road(
     df_all_matches['cust_lat'], df_all_matches['cust_lon']
 )
 df_all_matches['strict_cold_chain'] = df_all_matches[['cold_storage_requested', 'cold_required']].max(axis=1)
-
-# Sort strictly closest first for fair allocation
 df_all_matches = df_all_matches.sort_values(['customer_id', 'sku_id', 'distance_km']).reset_index(drop=True)
 
 # ---------------------------------------------------------
 # 3. THE TRUE AI: NEAREST NEIGHBOR ROUTING ALGORITHM
 # ---------------------------------------------------------
 def calculate_tsp_route(farm_lat, farm_lon, group_df):
-    """
-    AI Traveling Salesperson Engine.
-    Draws the most optimal path from the Farm -> Closest Store -> Next Closest Store.
-    """
     unique_custs = group_df[['customer_id', 'cust_lat', 'cust_lon']].drop_duplicates().to_dict('records')
     curr_lat, curr_lon = farm_lat, farm_lon
     total_route_distance = 0.0
@@ -102,7 +98,6 @@ def calculate_tsp_route(farm_lat, farm_lon, group_df):
                 best_dist = d
                 best_idx = i
         
-        # Drive to the closest unvisited supermarket
         next_stop = unvisited.pop(best_idx)
         total_route_distance += best_dist
         curr_lat, curr_lon = next_stop['cust_lat'], next_stop['cust_lon']
@@ -133,7 +128,6 @@ for sc in SCENARIOS:
     t_mult    = sc['time_mult']
     shock_loc = sc['shock_loc']
 
-    # --- PHASE A: CAPACITY ALLOCATION (Identical to Proposal A) ---
     temp_demand = df_all_matches.groupby(['customer_id', 'sku_id'])['weekly_demand_mean_boxes'].first() * d_mult
     customer_demand = {k: int(math.ceil(v)) for k, v in temp_demand.items()}
 
@@ -162,7 +156,6 @@ for sc in SCENARIOS:
 
     df_plan = pd.DataFrame(allocations)
 
-    # --- PHASE B: REGIONAL CONSOLIDATION ROUTING (The Milk Run) ---
     sc_fuel_L, sc_fuel_cost, sc_total_cost = 0, 0, 0
     sc_trucks, sc_on_time, sc_dispatched, sc_spoiled = 0, 0, 0, 0
 
@@ -172,15 +165,12 @@ for sc in SCENARIOS:
         total_boxes = group['allocated_boxes'].sum()
         sc_dispatched += total_boxes
         
-        # Calculate optimal distance visiting ALL supermarkets in this group
         farm_lat = group['farm_lat'].iloc[0]
         farm_lon = group['farm_lon'].iloc[0]
         route_dist_km = calculate_tsp_route(farm_lat, farm_lon, group)
         
-        # Must meet the STRICTEST deadline of all customers in the truck
         max_lead_time_route = group['max_lead_time_h'].min() 
 
-        # --- SMART TRUCK PACKING ---
         trucks = []
         if is_cold == 1:
             n = math.ceil(total_boxes / vehicles_dict['REEFER_TRK']['capacity_boxes'])
@@ -189,7 +179,7 @@ for sc in SCENARIOS:
             remaining = total_boxes
             while remaining > 0:
                 if remaining > vehicles_dict['VAN_AMB']['capacity_boxes']:
-                    trucks.append('LORRY_AMB') # Use massive Lorries instead of Vans!
+                    trucks.append('LORRY_AMB')
                     remaining -= vehicles_dict['LORRY_AMB']['capacity_boxes']
                 else:
                     trucks.append('VAN_AMB')
@@ -219,7 +209,6 @@ for sc in SCENARIOS:
             route_fuel_cost  += fuel_rm
             route_total_cost += total_rm
 
-        # ── WIDE DASHBOARD LOGIC (Routes) ──
         key = (farm, region_val, "Cold" if is_cold else "Ambient")
         if key not in master_routes_dict:
             master_routes_dict[key] = {
@@ -235,8 +224,6 @@ for sc in SCENARIOS:
         master_routes_dict[key][f'Travel_h_{sc_id}']  = round(route_travel_h, 2)
         master_routes_dict[key][f'Cost_RM_{sc_id}']   = round(route_total_cost, 2)
 
-        # ── WIDE DASHBOARD LOGIC (Spoilage) ──
-        # Spoilage assumes worst-case (they are the last drop off on the route)
         for _, row in group.iterrows():
             speed = (vehicles_dict['REEFER_TRK']['avg_speed_kmph'] if row['strict_cold_chain'] == 1 else vehicles_dict['LORRY_AMB']['avg_speed_kmph'])
             shelf_life = (row['shelf_life_cold_h'] if row['strict_cold_chain'] == 1 else row['shelf_life_ambient_h'])
@@ -298,12 +285,29 @@ for sc in scenarios_ordered:
             ordered_spoil_cols.append(f"{m}_{sc}")
 df_wide_spoilage = df_wide_spoilage[ordered_spoil_cols]
 
+# --- NEW: DATA DICTIONARY FOR PROPOSAL B ---
+definitions = [
+    {'Data Field': 'Farm_ID', 'Definition': 'The Farm ID supplying the vegetables.'},
+    {'Data Field': 'Region_State', 'Definition': 'The consolidated geographic region (State/City) for this milk run.'},
+    {'Data Field': 'Fleet_Type', 'Definition': 'Whether the route requires a REEFER (Cold) or LORRY/VAN (Ambient).'},
+    {'Data Field': 'Customers_Served', 'Definition': 'The number of unique supermarkets sharing this single delivery route.'},
+    {'Data Field': 'Strict_Lead_Time_h', 'Definition': 'The shortest (strictest) delivery deadline among all customers on this route.'},
+    {'Data Field': 'Boxes_[S0/S1/S2]', 'Definition': 'Total boxes loaded into the consolidated fleet.'},
+    {'Data Field': 'Trucks_[S0/S1/S2]', 'Definition': 'The aggregated list of vehicles deployed for this milk run.'},
+    {'Data Field': 'Dist_km_[S0/S1/S2]', 'Definition': 'The TSP-calculated total driving distance to visit all stops on this route.'},
+    {'Data Field': 'Travel_h_[S0/S1/S2]', 'Definition': 'The maximum travel time taken to complete all drop-offs.'},
+    {'Data Field': 'Cost_RM_[S0/S1/S2]', 'Definition': 'The total Ringgit cost (Fixed + Fuel + Maintenance) for this shared route.'}
+]
+df_dict = pd.DataFrame(definitions)
+
+# Save directly to the proposal B folder!
 OUTPUT_FILE = os.path.join(script_dir, 'Step6_Proposal_B_MilkRun_Results.xlsx')
 writer = pd.ExcelWriter(OUTPUT_FILE, engine='xlsxwriter')
 
 df_pivot.to_excel(writer,       sheet_name='KPI_Comparison')
 df_wide_routes.to_excel(writer, sheet_name='Wide_MilkRun_Routes', index=False)
 df_wide_spoilage.to_excel(writer,sheet_name='Wide_Spoilage_Detail',  index=False)
+df_dict.to_excel(writer,        sheet_name='Data_Dictionary', index=False)
 
 workbook = writer.book
 hdr_base = workbook.add_format({'bg_color': '#D9D9D9', 'bold': True, 'border': 1})
@@ -344,6 +348,13 @@ def apply_pastel_colors(sheet_name, df):
 
 apply_pastel_colors('Wide_MilkRun_Routes', df_wide_routes)
 apply_pastel_colors('Wide_Spoilage_Detail', df_wide_spoilage)
+
+# Formatting the dictionary specifically so it looks clean
+worksheet_dict = writer.sheets['Data_Dictionary']
+worksheet_dict.set_column(0, 0, 25, fmt_base)
+worksheet_dict.set_column(1, 1, 90, fmt_base)
+worksheet_dict.write(0, 0, 'Data Field', hdr_base)
+worksheet_dict.write(0, 1, 'Definition', hdr_base)
 
 writer.close()
 print(f"\nExported beautifully formatted dashboard to '{OUTPUT_FILE}'")
