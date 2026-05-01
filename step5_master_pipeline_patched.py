@@ -5,12 +5,13 @@ import random
 from collections import Counter
 
 # ============================================================
-# STEP 5 (PATCHED, WIDE, COLOR-CODED, & ORDERED)
+# STEP 5 (PATCHED, WIDE, & COLOR-CODED) — PROPOSAL A PIPELINE
+# STRICTLY OBEYS DATASET RULES (YIELD_SHOCK = 0.8)
 # ============================================================
 
 FILE_NAME = 'Dataset_Preliminary_Presentation_v10 (1).xlsx'
 FUEL_PRICE_RM = 2.05   
-YIELD_SHOCK   = 0.1    
+YIELD_SHOCK   = 0.8    # REVERTED TO STRICT 20% DATASET RULE
 
 print("========================================")
 print(" STEP 5: PROPOSAL A PIPELINE (COLOR DASHBOARD)")
@@ -266,7 +267,6 @@ df_wide_spoilage = pd.DataFrame(list(master_spoilage_dict.values())).fillna(0)
 # FORCE COLUMN ORDERING: Base -> S0 -> S1 -> S2a -> S2b -> S2c
 scenarios_ordered = ['S0', 'S1', 'S2a', 'S2b', 'S2c']
 
-# Sort Route Sheet
 route_bases = ['farm_id', 'customer_id', 'distance_km', 'max_lead_time_h']
 route_metrics = ['vehicle_type', 'travel_time_h', 'on_time', 'fuel_used_L', 'fuel_cost_RM', 'total_cost_RM']
 ordered_route_cols = route_bases.copy()
@@ -277,7 +277,6 @@ for sc in scenarios_ordered:
             ordered_route_cols.append(col_name)
 df_wide_routes = df_wide_routes[ordered_route_cols]
 
-# Sort Spoilage Sheet
 spoil_bases = ['farm_id', 'customer_id', 'sku_id', 'sku_name', 'distance_km', 'shelf_life_h']
 spoil_metrics = ['travel_h', 'allocated_boxes', 'spoiled_boxes']
 ordered_spoil_cols = spoil_bases.copy()
@@ -288,7 +287,6 @@ for sc in scenarios_ordered:
             ordered_spoil_cols.append(col_name)
 df_wide_spoilage = df_wide_spoilage[ordered_spoil_cols]
 
-# Generate Data Dictionary
 definitions = [
     {'Data Field': 'farm_id', 'Definition': 'The Farm ID supplying the vegetables.'},
     {'Data Field': 'customer_id', 'Definition': 'The Customer ID receiving the vegetables.'},
@@ -313,7 +311,6 @@ df_dict.to_excel(writer,        sheet_name='Data_Dictionary', index=False)
 
 workbook = writer.book
 
-# Format for Headers (Bold & Darker)
 hdr_base = workbook.add_format({'bg_color': '#D9D9D9', 'bold': True, 'border': 1})
 hdr_s0   = workbook.add_format({'bg_color': '#A9D08E', 'bold': True, 'border': 1})
 hdr_s1   = workbook.add_format({'bg_color': '#9BC2E6', 'bold': True, 'border': 1})
@@ -321,7 +318,6 @@ hdr_s2a  = workbook.add_format({'bg_color': '#FFD966', 'bold': True, 'border': 1
 hdr_s2b  = workbook.add_format({'bg_color': '#F4B084', 'bold': True, 'border': 1})
 hdr_s2c  = workbook.add_format({'bg_color': '#E699CC', 'bold': True, 'border': 1})
 
-# Format for Cells (Lighter Pastels)
 fmt_base = workbook.add_format({'bg_color': '#F2F2F2', 'border': 1})
 fmt_s0   = workbook.add_format({'bg_color': '#E2EFDA', 'border': 1})
 fmt_s1   = workbook.add_format({'bg_color': '#DDEBF7', 'border': 1})
