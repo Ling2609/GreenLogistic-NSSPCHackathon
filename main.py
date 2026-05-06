@@ -15,41 +15,35 @@ app.add_middleware(
 )
 
 # --- THE DATA ENGINE ---
-# Find the exact folder this script is in
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_PATH = os.path.join(BASE_DIR, "Dataset_Preliminary_Presentation_v10 (1).xlsx")
 
 print("Booting up AI Data Engine...")
 try:
-    # 1. Read the Excel sheets
     df_demand = pd.read_excel(FILE_PATH, sheet_name='Demand')
     df_customers = pd.read_excel(FILE_PATH, sheet_name='Customers')
     
-    # 2. Clean the IDs so they match perfectly
     df_demand['customer_id'] = df_demand['customer_id'].astype(str).str.strip().str.upper()
     df_customers['customer_id'] = df_customers['customer_id'].astype(str).str.strip().str.upper()
     
-    # 3. Merge them! Now every order has a Latitude and Longitude
     df_live_orders = pd.merge(df_demand, df_customers, on='customer_id', how='inner')
     
-    # 4. Rename the columns to match what our React Frontend expects
-    df_live_orders = df_live_orders.rename(columns={
-        'sku_id': 'sku',
-        'weekly_demand_mean_boxes': 'boxes',
-        'state': 'region'
-    })
+    # NEW: Group the data! 
+    # Instead of 1,000 rows, we collapse it down to 1 row per customer
+    df_grouped = df_live_orders.groupby(['customer_id', 'lat', 'lon', 'state']).agg(
+        total_boxes=('weekly_demand_mean_boxes', 'sum'),
+        # Create a clean list of what they ordered (e.g., "SKU_CUC, SKU_TOM")
+        items_ordered=('sku_id', lambda x: ', '.join(x.unique()))
+    ).reset_index()
     
-    # Generate a fake order ID for the map to use
-    df_live_orders['order_id'] = range(1, len(df_live_orders) + 1)
-    
-    # 5. Convert the DataFrame into a normal Python Dictionary
-    REAL_DATABASE = df_live_orders.to_dict(orient="records")
-    print(f"✅ Successfully loaded {len(REAL_DATABASE)} real orders from the dataset!")
+    # Convert to dictionary for React
+    REAL_DATABASE = df_grouped.to_dict(orient="records")
+    print(f"✅ Successfully aggregated down to {len(REAL_DATABASE)} unique Supermarket deliveries!")
 
 except Exception as e:
     print(f"❌ ERROR LOADING EXCEL: {e}")
     REAL_DATABASE = []
-
+    
 # --- API ENDPOINTS ---
 @app.get("/")
 def read_root():

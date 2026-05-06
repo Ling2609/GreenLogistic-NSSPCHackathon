@@ -41,14 +41,19 @@ function App() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* This loops through your Python data and places a Pin for every order */}
+          {/* Loop through our perfectly grouped data! */}
           {orders.map(order => (
-            <Marker key={order.order_id} position={[order.lat, order.lon]}>
+            <Marker key={order.customer_id} position={[order.lat, order.lon]}>
               <Popup>
                 <div style={{ color: 'black' }}>
-                  <h3 style={{ margin: '0 0 5px 0' }}>{order.sku}</h3>
-                  <p style={{ margin: '0' }}><strong>Boxes:</strong> {order.boxes}</p>
-                  <p style={{ margin: '0' }}><strong>Customer ID:</strong> {order.customer_id}</p>
+                  <h3 style={{ margin: '0 0 5px 0', borderBottom: '1px solid #ccc' }}>
+                    Customer: {order.customer_id}
+                  </h3>
+                  <p style={{ margin: '5px 0' }}><strong>Location:</strong> {order.state}</p>
+                  <p style={{ margin: '5px 0' }}><strong>Total Load:</strong> {order.total_boxes} boxes</p>
+                  <p style={{ margin: '5px 0', fontSize: '12px', color: '#555' }}>
+                    <strong>Items:</strong> {order.items_ordered}
+                  </p>
                 </div>
               </Popup>
             </Marker>
