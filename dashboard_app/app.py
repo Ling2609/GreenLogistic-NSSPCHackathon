@@ -1,3 +1,5 @@
+# use --streamlit run app.py-- to run the app
+
 import streamlit as st
 import pandas as pd
 import os
