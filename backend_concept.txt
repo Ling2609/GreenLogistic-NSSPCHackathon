@@ -1,0 +1,71 @@
+🗄️ Core Database Architecture (PostgreSQL)
+1. Users Table (Authentication & Roles)
+
+user_id (Primary Key)
+
+email, password_hash
+
+role (Enum: 'FARM_MANAGER', 'SUPERMARKET_BUYER', 'LOGISTICS_ADMIN')
+
+2. Locations Table (The Geocoding Hub)
+
+location_id (Primary Key)
+
+address_text (e.g., "Jalan SS 15/4, Subang Jaya")
+
+latitude (Float)
+
+longitude (Float)
+
+region_state (String - used for the AI Milk Run grouping)
+
+3. Farms & Customers Tables (The Profiles)
+
+farm_id (Linked to Users and Locations)
+
+daily_capacity_boxes (Integer)
+
+customer_id (Linked to Users and Locations)
+
+4. Orders Table (The Live Marketplace)
+
+order_id (Primary Key)
+
+customer_id (Foreign Key)
+
+sku_id (Vegetable type)
+
+quantity_boxes (Integer)
+
+requires_cold_chain (Boolean: True/False)
+
+max_lead_time_hours (Integer)
+
+status (Enum: 'PENDING', 'AI_PROCESSING', 'DISPATCHED', 'DELIVERED')
+
+5. Milk_Runs Table (The AI Output / The Master Plan)
+
+This is where your Python AI saves its answers!
+
+route_id (Primary Key)
+
+farm_id (Origin)
+
+assigned_vehicle (e.g., 'LORRY_AMB_500')
+
+total_boxes_loaded (Integer)
+
+optimized_distance_km (Float - from your TSP algorithm)
+
+total_route_cost_rm (Float)
+
+How the App Actually Works (The User Flow)
+Morning (9:00 AM): Supermarkets log in and submit rows into the Orders table. Status is PENDING.
+
+Cut-off Time (12:00 PM): The system locks new orders.
+
+The AI Trigger: Your FastAPI backend wakes up. It grabs all PENDING orders, groups them by State, runs the Nearest Neighbor TSP algorithm, and figures out the trucks.
+
+The Output: The AI creates new rows in the Milk_Runs table and updates the orders to DISPATCHED.
+
+Afternoon (1:00 PM): The Logistics Admin opens the dashboard, sees the beautiful Streamlit/React map with the exact routes drawn out, and sends the trucks on their way.
