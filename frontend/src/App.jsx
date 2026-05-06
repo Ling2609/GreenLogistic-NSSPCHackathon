@@ -33,68 +33,113 @@ function App() {
       .then(data => setRoutingData(data))
   }, [])
 
+  let totalBoxes = 0;
+  let totalStops = 0;
+  let totalTrucks = 0;
+  let estimatedCostRM = 0;
+
+  if (routingData) {
+    totalTrucks = routingData.milk_runs.length;
+    routingData.milk_runs.forEach(route => {
+      totalBoxes += route.total_load;
+      totalStops += route.stops;
+    });
+    estimatedCostRM = totalTrucks * 350; 
+  }
+
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', backgroundColor: '#1e1e2f', color: 'white', minHeight: '100vh' }}>
-      <h1 style={{ color: '#A9D08E' }}>🚚 AI Fleet Dispatch & Milk Run Planner</h1>
-      <p>Optimized Routes from {routingData ? routingData.farm.name : 'Loading...'} to Regional Supermarkets</p>
+    <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#1e1e2f', color: 'white', fontFamily: 'sans-serif' }}>
       
-      <div style={{ height: '700px', width: '100%', borderRadius: '15px', overflow: 'hidden', border: '2px solid #444' }}>
-        <MapContainer center={[3.8, 101.5]} zoom={8} style={{ height: '100%', width: '100%' }}>
-          
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+      {/* --- LEFT COLUMN: SHRUNK SIDEBAR --- */}
+      {/* Reduced width from 350px to 260px, reduced padding */}
+      <div style={{ width: '260px', padding: '15px', backgroundColor: '#2a2a40', borderRight: '1px solid #444', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto' }}>
+        
+        <div>
+          <h2 style={{ color: '#A9D08E', margin: '0 0 5px 0', fontSize: '18px' }}>🥬 GreenLogistics AI</h2>
+          <p style={{ margin: 0, color: '#aaa', fontSize: '12px' }}>Daily Master Dispatch Plan</p>
+        </div>
+        
+        <hr style={{ borderColor: '#444', width: '100%', margin: '5px 0' }} />
 
-          {/* UPGRADED: Rich Customer Popups */}
-          {orders.map(order => (
-            <Marker key={order.customer_id} position={[order.lat, order.lon]}>
-              <Popup>
-                <div style={{ color: 'black', minWidth: '150px' }}>
-                  <h3 style={{ margin: '0 0 5px 0', borderBottom: '1px solid #ccc' }}>
-                    {order.customer_id} ({order.state})
-                  </h3>
-                  <p style={{ margin: '5px 0' }}><strong>Demand:</strong> {order.total_boxes} boxes</p>
-                  <p style={{ margin: '5px 0', fontSize: '11px', color: '#555' }}>
-                    <strong>Items:</strong> {order.items_ordered}
-                  </p>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+        {/* KPI Cards: Replaced <h1> with smaller, tighter custom fonts */}
+        <div style={{ backgroundColor: '#1e1e2f', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #3357FF' }}>
+          <div style={{ color: '#aaa', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Fleet Needed</div>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', marginTop: '4px' }}>{totalTrucks} Trucks</div>
+        </div>
 
-          {routingData && (
-            <>
-              <Marker position={[routingData.farm.lat, routingData.farm.lon]} icon={FarmIcon}>
-                <Popup><b>🌾 Origin: {routingData.farm.name}</b></Popup>
-              </Marker>
+        <div style={{ backgroundColor: '#1e1e2f', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #33FF57' }}>
+          <div style={{ color: '#aaa', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Cargo Volume</div>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', marginTop: '4px' }}>{totalBoxes} Boxes</div>
+        </div>
 
-              {/* UPGRADED: Interactive Hover Tooltips on the Routes */}
-              {routingData.milk_runs.map((route, index) => (
-                <Polyline 
-                  key={route.region} 
-                  positions={route.path} 
-                  pathOptions={{ 
-                    color: routeColors[index % routeColors.length], 
-                    weight: 5, 
-                    opacity: 0.8,
-                    dashArray: '10, 10'
-                  }} 
-                >
-                  <Tooltip sticky>
-                    <div style={{ fontSize: '14px' }}>
-                      <strong>Route: {route.region} Milk Run</strong><br/>
-                      🚚 Total Load: {route.total_load} boxes<br/>
-                      📍 Customers Served: {route.stops}
-                    </div>
-                  </Tooltip>
-                </Polyline>
-              ))}
-            </>
-          )}
+        <div style={{ backgroundColor: '#1e1e2f', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #FF5733' }}>
+          <div style={{ color: '#aaa', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Est. Daily Cost</div>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', marginTop: '4px' }}>RM {estimatedCostRM}</div>
+        </div>
 
-        </MapContainer>
+        <div style={{ backgroundColor: '#1e1e2f', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #F333FF' }}>
+          <div style={{ color: '#aaa', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Customers Served</div>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', marginTop: '4px' }}>{totalStops} Stops</div>
+        </div>
       </div>
+
+      {/* --- RIGHT COLUMN: THE MAP --- */}
+      {/* Reduced padding around the map */}
+      <div style={{ flex: 1, padding: '15px', display: 'flex', flexDirection: 'column' }}>
+        <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: 'normal', color: '#ccc' }}>Live AI Fleet Routing Monitor</h3>
+        
+        <div style={{ flex: 1, borderRadius: '10px', overflow: 'hidden', border: '1px solid #444' }}>
+          <MapContainer center={[3.8, 101.5]} zoom={8} style={{ height: '100%', width: '100%' }}>
+            
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+
+            {orders.map(order => (
+              <Marker key={order.customer_id} position={[order.lat, order.lon]}>
+                <Popup>
+                  <div style={{ color: 'black', minWidth: '120px' }}>
+                    <h4 style={{ margin: '0 0 5px 0', borderBottom: '1px solid #ccc', fontSize: '14px' }}>{order.customer_id} ({order.state})</h4>
+                    <p style={{ margin: '0', fontSize: '13px' }}><strong>Demand:</strong> {order.total_boxes} boxes</p>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+
+            {routingData && (
+              <>
+                <Marker position={[routingData.farm.lat, routingData.farm.lon]} icon={FarmIcon}>
+                  <Popup><b>🌾 Origin: {routingData.farm.name}</b></Popup>
+                </Marker>
+
+                {routingData.milk_runs.map((route, index) => (
+                  <Polyline 
+                    key={route.region} 
+                    positions={route.path} 
+                    pathOptions={{ 
+                      color: routeColors[index % routeColors.length], 
+                      weight: 4,  // slightly thinner line
+                      opacity: 0.8,
+                      dashArray: '8, 8'
+                    }} 
+                  >
+                    <Tooltip sticky>
+                      <div style={{ fontSize: '13px' }}>
+                        <strong>Route: {route.region}</strong><br/>
+                        🚚 Total Load: {route.total_load} boxes<br/>
+                        📍 Customers: {route.stops}
+                      </div>
+                    </Tooltip>
+                  </Polyline>
+                ))}
+              </>
+            )}
+
+          </MapContainer>
+        </div>
+      </div>
+      
     </div>
   )
 }
