@@ -15,6 +15,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class SimulationSettings(BaseModel):
+    new_capacity: int
+    
 class NewOrder(BaseModel):
     customer_id: str
     state: str
@@ -27,7 +30,10 @@ AI_ROUTES = []
 farm_lat, farm_lon, farm_name = 0, 0, ""
 
 # --- THE CVRP AI ENGINE (UPGRADED) ---
-TRUCK_CAPACITY = 800 # 🚚 New Rule: Maximum boxes per truck!
+REAL_DATABASE = []
+AI_ROUTES = []
+farm_lat, farm_lon, farm_name = 0, 0, ""
+TRUCK_CAPACITY = 800 # Now a dynamic global variable!
 
 def calculate_milk_runs(database):
     """Calculates Capacitated Vehicle Routing Problem (CVRP)"""
@@ -145,3 +151,18 @@ def create_new_order(order: NewOrder):
     AI_ROUTES = calculate_milk_runs(REAL_DATABASE)
     
     return {"message": "Order added and routes recalculated!", "total_orders": len(REAL_DATABASE)}
+
+@app.post("/api/settings/capacity")
+def update_truck_capacity(settings: SimulationSettings):
+    global TRUCK_CAPACITY, AI_ROUTES, REAL_DATABASE
+    
+    # Update the global rule
+    TRUCK_CAPACITY = settings.new_capacity
+    
+    # Instantly force the AI to recalculate every route in Malaysia based on the new rule!
+    AI_ROUTES = calculate_milk_runs(REAL_DATABASE)
+    
+    return {
+        "message": f"Capacity updated to {TRUCK_CAPACITY} boxes. Routes recalculated.", 
+        "total_trucks": len(AI_ROUTES)
+    }

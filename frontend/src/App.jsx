@@ -5,13 +5,10 @@ import { LayoutDashboard, PackageSearch, Truck, Settings, Menu } from 'lucide-re
 // --- PLACEHOLDER PAGES ---
 import LiveMapDashboard from './LiveMapDashboard' 
 import OrdersPage from './OrdersPage'
+import SettingsPage from './SettingsPage'
 
 function FleetPage() {
   return <div style={{ padding: '20px' }}><h1>🚚 Fleet & Capacity</h1><p>Truck details and capacity limits will go here...</p></div>
-}
-
-function SettingsPage() {
-  return <div style={{ padding: '20px' }}><h1>⚙️ Simulation Settings</h1><p>Disaster toggles and AI parameters will go here...</p></div>
 }
 
 // --- NAVIGATION COMPONENT ---
