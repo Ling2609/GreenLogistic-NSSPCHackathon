@@ -6,10 +6,7 @@ import { LayoutDashboard, PackageSearch, Truck, Settings, Menu } from 'lucide-re
 import LiveMapDashboard from './LiveMapDashboard' 
 import OrdersPage from './OrdersPage'
 import SettingsPage from './SettingsPage'
-
-function FleetPage() {
-  return <div style={{ padding: '20px' }}><h1>🚚 Fleet & Capacity</h1><p>Truck details and capacity limits will go here...</p></div>
-}
+import FleetPage from './FleetPage'
 
 // --- NAVIGATION COMPONENT ---
 function Sidebar() {
