@@ -15,8 +15,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- THE DATA MODELS ---
-# This tells Python exactly what a "New Order" from React should look like
 class NewOrder(BaseModel):
     customer_id: str
     state: str
@@ -24,54 +22,75 @@ class NewOrder(BaseModel):
     lat: float
     lon: float
 
-# Global variables to hold our live state
 REAL_DATABASE = []
 AI_ROUTES = []
 farm_lat, farm_lon, farm_name = 0, 0, ""
 
-# --- THE AI ENGINE ---
+# --- THE CVRP AI ENGINE (UPGRADED) ---
+TRUCK_CAPACITY = 800 # 🚚 New Rule: Maximum boxes per truck!
+
 def calculate_milk_runs(database):
-    """Calculates the nearest neighbor TSP routes based on the current live database"""
+    """Calculates Capacitated Vehicle Routing Problem (CVRP)"""
     routes = []
-    
-    # Group the database by state manually
     states = set([row['state'] for row in database])
     
     for state in states:
         unvisited = [row for row in database if row['state'] == state]
-        route_total_boxes = sum([row['total_boxes'] for row in unvisited])
-        
-        curr_lat, curr_lon = farm_lat, farm_lon
-        route_coords = [[farm_lat, farm_lon]]
+        truck_number = 1
         
         while unvisited:
-            best_dist = float('inf')
-            best_idx = 0
-            for i, c in enumerate(unvisited):
-                d = math.hypot(curr_lat - c['lat'], curr_lon - c['lon'])
-                if d < best_dist:
-                    best_dist = d
-                    best_idx = i
+            # Spawn a new truck at the farm
+            curr_lat, curr_lon = farm_lat, farm_lon
+            route_coords = [[farm_lat, farm_lon]]
+            current_load = 0
+            route_stops = 0
             
-            next_stop = unvisited.pop(best_idx)
-            route_coords.append([next_stop['lat'], next_stop['lon']])
-            curr_lat, curr_lon = next_stop['lat'], next_stop['lon']
+            while unvisited:
+                best_dist = float('inf')
+                best_idx = -1
+                
+                # Look for the closest customer that STILL FITS in the truck
+                for i, c in enumerate(unvisited):
+                    if current_load + c['total_boxes'] <= TRUCK_CAPACITY:
+                        d = math.hypot(curr_lat - c['lat'], curr_lon - c['lon'])
+                        if d < best_dist:
+                            best_dist = d
+                            best_idx = i
+                
+                # If no one else fits, send the truck back to the farm!
+                if best_idx == -1:
+                    # Edge case: What if a single customer ordered 1000 boxes? (More than max capacity)
+                    # We assign them a dedicated oversized truck.
+                    if current_load == 0:
+                        best_idx = 0
+                    else:
+                        break
+                
+                # Drive truck to the customer and load the boxes
+                next_stop = unvisited.pop(best_idx)
+                route_coords.append([next_stop['lat'], next_stop['lon']])
+                curr_lat, curr_lon = next_stop['lat'], next_stop['lon']
+                current_load += next_stop['total_boxes']
+                route_stops += 1
+                
+            # Drive empty truck back to the farm
+            route_coords.append([farm_lat, farm_lon])
             
-        route_coords.append([farm_lat, farm_lon])
-        
-        routes.append({
-            "region": state,
-            "path": route_coords,
-            "total_load": int(route_total_boxes),
-            "stops": len([row for row in database if row['state'] == state])
-        })
+            routes.append({
+                "region": f"{state} (Truck {truck_number})",
+                "path": route_coords,
+                "total_load": int(current_load),
+                "stops": route_stops
+            })
+            truck_number += 1
+            
     return routes
 
 # --- INITIAL BOOT SEQUENCE ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_PATH = os.path.join(BASE_DIR, "Dataset_Preliminary_Presentation_v10 (1).xlsx")
 
-print("Booting up AI Routing Engine...")
+print("Booting up Advanced CVRP Routing Engine...")
 try:
     df_demand = pd.read_excel(FILE_PATH, sheet_name='Demand')
     df_customers = pd.read_excel(FILE_PATH, sheet_name='Customers')
@@ -91,15 +110,12 @@ try:
     farm_lon = df_farms.iloc[0]['lon']
     farm_name = df_farms.iloc[0]['farm_id']
 
-    # Generate initial routes
     AI_ROUTES = calculate_milk_runs(REAL_DATABASE)
-    print("✅ System Online!")
+    print("✅ System Online! Capacitated limits applied.")
 
 except Exception as e:
     print(f"❌ ERROR: {e}")
 
-
-# --- API ENDPOINTS ---
 @app.get("/api/orders/pending")
 def get_pending_orders():
     return REAL_DATABASE
@@ -111,12 +127,10 @@ def get_optimized_routes():
         "milk_runs": AI_ROUTES
     }
 
-# NEW: The endpoint to receive data from React!
 @app.post("/api/orders/new")
 def create_new_order(order: NewOrder):
     global REAL_DATABASE, AI_ROUTES
     
-    # 1. Add the new order to our live Python database
     new_entry = {
         "customer_id": order.customer_id,
         "state": order.state,
@@ -127,7 +141,7 @@ def create_new_order(order: NewOrder):
     }
     REAL_DATABASE.append(new_entry)
     
-    # 2. Recalculate the AI Routes instantly!
+    # AI instantly recalculates CVRP limits with the new data!
     AI_ROUTES = calculate_milk_runs(REAL_DATABASE)
     
     return {"message": "Order added and routes recalculated!", "total_orders": len(REAL_DATABASE)}
